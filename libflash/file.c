@@ -15,6 +15,7 @@
  */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,7 +60,7 @@ static int file_reacquire(struct blocklevel_device *bl)
 	return 0;
 }
 
-static int file_read(struct blocklevel_device *bl, uint32_t pos, void *buf, uint32_t len)
+static int file_read(struct blocklevel_device *bl, uint64_t pos, void *buf, uint64_t len)
 {
 	struct file_data *file_data = container_of(bl, struct file_data, bl);
 	int rc, count = 0;
@@ -81,8 +82,8 @@ static int file_read(struct blocklevel_device *bl, uint32_t pos, void *buf, uint
 	return 0;
 }
 
-static int file_write(struct blocklevel_device *bl, uint32_t dst, const void *src,
-		uint32_t len)
+static int file_write(struct blocklevel_device *bl, uint64_t dst, const void *src,
+		uint64_t len)
 {
 	struct file_data *file_data = container_of(bl, struct file_data, bl);
 	int rc, count = 0;
@@ -111,7 +112,7 @@ static int file_write(struct blocklevel_device *bl, uint32_t dst, const void *sr
  * Also, erasing flash leaves all the bits set to 1. This may be expected
  * by higher level functions so this function should also emulate that
  */
-static int file_erase(struct blocklevel_device *bl, uint32_t dst, uint32_t len)
+static int file_erase(struct blocklevel_device *bl, uint64_t dst, uint64_t len)
 {
 	unsigned long long int d = ULLONG_MAX;
 	int i = 0;
@@ -127,16 +128,47 @@ static int file_erase(struct blocklevel_device *bl, uint32_t dst, uint32_t len)
 	return 0;
 }
 
-static int mtd_erase(struct blocklevel_device *bl, uint32_t dst, uint32_t len)
+static int mtd_erase(struct blocklevel_device *bl, uint64_t dst, uint64_t len)
 {
 	struct file_data *file_data = container_of(bl, struct file_data, bl);
-	struct erase_info_user erase_info = {
-		.start = dst,
-		.length = len
-	};
+	int err;
 
-	if (ioctl(file_data->fd, MEMERASE, &erase_info) == -1)
-		return FLASH_ERR_PARM_ERROR;
+	FL_DBG("%s: dst: 0x%" PRIx64 ", len: 0x%" PRIx64 "\n", __func__, dst, len);
+
+	/*
+	 * Some kernels that pflash supports do not know about the 64bit
+	 * version of the ioctl() therefore we'll just use the 32bit (which
+	 * should always be supported...) unless we MUST use the 64bit and
+	 * then lets just hope the kernel knows how to deal with it. If it
+	 * is unsupported the ioctl() will fail and we'll report that -
+	 * there is no other option.
+	 */
+	if (dst > UINT_MAX || len > UINT_MAX) {
+		struct erase_info_user64 erase_info = {
+			.start = dst,
+			.length = len
+		};
+
+		if (ioctl(file_data->fd, MEMERASE64, &erase_info) == -1) {
+			err = errno;
+			if (err == 25) /* Kernel doesn't do 64bit MTD erase ioctl() */
+				FL_DBG("Attempted a 64bit erase on a kernel which doesn't support it\n");
+			FL_ERR("%s: IOCTL to kernel failed! %s\n", __func__, strerror(err));
+			errno = err;
+			return FLASH_ERR_PARM_ERROR;
+		}
+	} else {
+		struct erase_info_user erase_info = {
+			.start = dst,
+			.length = len
+		};
+		if (ioctl(file_data->fd, MEMERASE, &erase_info) == -1) {
+			err = errno;
+			FL_ERR("%s: IOCTL to kernel failed! %s\n", __func__, strerror(err));
+			errno = err;
+			return FLASH_ERR_PARM_ERROR;
+		}
+	}
 
 	return 0;
 }
@@ -177,7 +209,7 @@ static int get_info_name(struct file_data *file_data, char **name)
 
 
 static int mtd_get_info(struct blocklevel_device *bl, const char **name,
-		uint32_t *total_size, uint32_t *erase_granule)
+		uint64_t *total_size, uint32_t *erase_granule)
 {
 	struct file_data *file_data = container_of(bl, struct file_data, bl);
 	struct mtd_info_user mtd_info;
@@ -204,7 +236,7 @@ static int mtd_get_info(struct blocklevel_device *bl, const char **name,
 }
 
 static int file_get_info(struct blocklevel_device *bl, const char **name,
-		uint32_t *total_size, uint32_t *erase_granule)
+		uint64_t *total_size, uint32_t *erase_granule)
 {
 	struct file_data *file_data = container_of(bl, struct file_data, bl);
 	struct stat st;

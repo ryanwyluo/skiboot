@@ -12,6 +12,7 @@ skiboot.lds
 skiboot.lid
 skiboot.lid.xz
 skiboot*.map
+skiboot*.stb
 skiboot.info
 coverage-report/
 extract-gcov
@@ -65,6 +66,7 @@ external/mambo/skiboot-hello_world.dump
 external/memboot/memboot
 hdata/test/hdata_to_dt
 hdata/test/hdata_to_dt-gcov
+hw/test/phys-map-test
 hw/ipmi/test/run-fru
 hw/ipmi/test/*-gcov
 libc/test/run-time
@@ -73,6 +75,9 @@ libflash/test/test-blocklevel
 libflash/test/test-flash
 libflash/test/test-ecc
 libflash/test/test-flash-gcov
+libstb/create-container
+libstb/test/run-stb-container
+libstb/test/*-gcov
 test/hello_world/hello_kernel/hello_kernel
 zImage.epapr
 vgcore.*

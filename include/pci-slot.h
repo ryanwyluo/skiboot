@@ -108,9 +108,8 @@ struct pci_slot_ops {
 	int64_t (*poll_link)(struct pci_slot *slot);
 	int64_t (*creset)(struct pci_slot *slot);
 	int64_t (*freset)(struct pci_slot *slot);
-	int64_t (*pfreset)(struct pci_slot *slot);
 	int64_t (*hreset)(struct pci_slot *slot);
-	int64_t (*poll)(struct pci_slot *slot);
+	int64_t (*run_sm)(struct pci_slot *slot);
 
 	/* Auxillary functions */
 	void (*add_properties)(struct pci_slot *slot, struct dt_node *np);
@@ -125,30 +124,30 @@ struct pci_slot_ops {
 #define PCI_SLOT_STATE_MASK			0xFFFFFF00
 #define PCI_SLOT_STATE_NORMAL			0x00000000
 #define PCI_SLOT_STATE_LINK			0x00000100
-#define   PCI_SLOT_STATE_LINK_START_POLL	0x00000101
-#define   PCI_SLOT_STATE_LINK_DELAY_FINALIZED	0x00000102
-#define   PCI_SLOT_STATE_LINK_POLLING		0x00000103
+#define   PCI_SLOT_STATE_LINK_START_POLL	(PCI_SLOT_STATE_LINK + 1)
+#define   PCI_SLOT_STATE_LINK_DELAY_FINALIZED	(PCI_SLOT_STATE_LINK + 2)
+#define   PCI_SLOT_STATE_LINK_POLLING		(PCI_SLOT_STATE_LINK + 3)
 #define PCI_SLOT_STATE_HRESET			0x00000200
-#define   PCI_SLOT_STATE_HRESET_START		0x00000201
-#define   PCI_SLOT_STATE_HRESET_HOLD		0x00000202
+#define   PCI_SLOT_STATE_HRESET_START		(PCI_SLOT_STATE_HRESET + 1)
+#define   PCI_SLOT_STATE_HRESET_HOLD		(PCI_SLOT_STATE_HRESET + 2)
 #define PCI_SLOT_STATE_FRESET			0x00000300
-#define   PCI_SLOT_STATE_FRESET_POWER_OFF	0x00000301
-#define PCI_SLOT_STATE_PFRESET			0x00000400
-#define   PCI_SLOT_STATE_PFRESET_START		0x00000401
-#define PCI_SLOT_STATE_CRESET			0x00000500
-#define   PCI_SLOT_STATE_CRESET_START		0x00000501
-#define PCI_SLOT_STATE_GPOWER			0x00000600
-#define   PCI_SLOT_STATE_GPOWER_START		0x00000601
-#define PCI_SLOT_STATE_SPOWER			0x00000700
-#define   PCI_SLOT_STATE_SPOWER_START		0x00000701
-#define   PCI_SLOT_STATE_SPOWER_DONE		0x00000702
-#define PCI_SLOT_STATE_GPRESENCE		0x00000800
-#define   PCI_SLOT_STATE_GPRESENCE_START	0x00000801
+#define   PCI_SLOT_STATE_FRESET_POWER_OFF	(PCI_SLOT_STATE_FRESET + 1)
+#define PCI_SLOT_STATE_CRESET			0x00000400
+#define   PCI_SLOT_STATE_CRESET_START		(PCI_SLOT_STATE_CRESET + 1)
+#define PCI_SLOT_STATE_GPOWER			0x00000500
+#define   PCI_SLOT_STATE_GPOWER_START		(PCI_SLOT_STATE_GPOWER + 1)
+#define PCI_SLOT_STATE_SPOWER			0x00000600
+#define   PCI_SLOT_STATE_SPOWER_START		(PCI_SLOT_STATE_SPOWER + 1)
+#define   PCI_SLOT_STATE_SPOWER_DONE		(PCI_SLOT_STATE_SPOWER + 2)
+#define PCI_SLOT_STATE_GPRESENCE		0x00000700
+#define   PCI_SLOT_STATE_GPRESENCE_START	(PCI_SLOT_STATE_GPRESENCE + 1)
 
 
 struct pci_slot {
 	uint32_t		flags;
 #define PCI_SLOT_FLAG_BOOTUP		0x1
+#define PCI_SLOT_FLAG_FORCE_POWERON	0x2
+#define PCI_SLOT_FLAG_BROKEN_PDC	0x4
 
 	struct phb		*phb;
 	struct pci_device	*pd;
@@ -161,6 +160,7 @@ struct pci_slot {
 
 	/* Slot information */
 	uint8_t			pluggable;
+	uint8_t			surprise_pluggable;
 	uint8_t			power_ctl;
 	uint8_t			power_led_ctl;
 	uint8_t			attn_led_ctl;
@@ -178,6 +178,7 @@ struct pci_slot {
 	 */
 	uint32_t		state;
 	uint32_t		retry_state;
+	uint16_t		pcie_cap;
 	uint32_t		link_cap;
 	uint32_t		slot_cap;
 	uint64_t		delay_tgt_tb;

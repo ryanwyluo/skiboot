@@ -93,6 +93,13 @@ call_##name:					;\
 	CALL_THUNK(apply_attr_override, 12)
 	CALL_THUNK(mfg_htmgt_pass_thru, 13)
 	CALL_THUNK(run_command, 14)
+	CALL_THUNK(verify_container, 15)
+	CALL_THUNK(sbe_message_passing, 16)
+	CALL_THUNK(load_pm_complex, 17)
+	CALL_THUNK(start_pm_complex, 18)
+	CALL_THUNK(reset_pm_complex, 19)
+	CALL_THUNK(get_ipoll_events, 20)
+	CALL_THUNK(firmware_notify, 21)
 
 	.globl call_hbrt_init
 call_hbrt_init:
@@ -187,10 +194,21 @@ hinterface:
 	CALLBACK_THUNK(hservice_ipmi_msg)
 	CALLBACK_THUNK(hservice_memory_error)
 	CALLBACK_THUNK(hservice_get_interface_capabilities)
+<<<<<<< HEAD
 .globl __hinterface_pad
 __hinterface_pad:
 	/* Reserved space for future growth */
 	.space 31*8,0
+=======
+	DISABLED_THUNK(hservice_map_phys_mem)
+	DISABLED_THUNK(hservice_unmap_phys_mem)
+	DISABLED_THUNK(hservice_hcode_scom_update)
+	CALLBACK_THUNK(hservice_firmware_request)
+.globl __hinterface_pad
+__hinterface_pad:
+	/* Reserved space for future growth */
+	.space 27*8,0
+>>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 .globl __hinterface_end
 __hinterface_end:
 	/* Eye catcher for debugging */

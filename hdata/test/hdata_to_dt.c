@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <mem_region-malloc.h>
 
 #include <interrupts.h>
 
@@ -29,6 +30,8 @@
 
 #include "../../libfdt/fdt.c"
 #include "../../libfdt/fdt_ro.c"
+#include "../../libfdt/fdt_sw.c"
+#include "../../libfdt/fdt_strerror.c"
 
 struct dt_node *opal_node;
 
@@ -44,7 +47,6 @@ static void *ntuple_addr(const struct spira_ntuple *n);
 
 /* Stuff which core expects. */
 #define __this_cpu ((struct cpu_thread *)NULL)
-#define zalloc(expr) calloc(1, (expr))
 
 unsigned long tb_hz = 512000000;
 
@@ -65,10 +67,14 @@ unsigned long tb_hz = 512000000;
 #define __CPU_H
 struct cpu_thread {
 	uint32_t			pir;
+	uint32_t			chip_id;
 };
 
 struct cpu_thread __boot_cpu, *boot_cpu = &__boot_cpu;
 static unsigned long fake_pvr_type = PVR_TYPE_P7;
+
+// Fake PVR_VERS_MAJ to 1
+#define PVR_VERS_MAJ(v) (1)
 
 static inline unsigned long mfspr(unsigned int spr)
 {
@@ -89,6 +95,11 @@ struct dt_node *add_ics_node(void)
 
 static bool spira_check_ptr(const void *ptr, const char *file, unsigned int line);
 
+/* should probably check this */
+#define BITS_PER_LONG 64
+/* not used, just needs to exist */
+#define cpu_max_pir 0x7
+
 #include "../cpu-common.c"
 #include "../fsp.c"
 #include "../hdif.c"
@@ -101,10 +112,14 @@ static bool spira_check_ptr(const void *ptr, const char *file, unsigned int line
 #include "../vpd-common.c"
 #include "../slca.c"
 #include "../hostservices.c"
+#include "../i2c.c"
 #include "../../core/vpd.c"
 #include "../../core/device.c"
 #include "../../core/chip.c"
 #include "../../test/dt_common.c"
+#include "../../core/fdt.c"
+#include "../../hw/phys-map.c"
+#include "../../core/mem_region.c"
 
 #include <err.h>
 
@@ -145,10 +160,72 @@ static void undefined_bytes(void *p, size_t len)
 	VALGRIND_MAKE_MEM_UNDEFINED(p, len);
 }
 
+static u32 hash_prop(const struct dt_property *p)
+{
+	u32 i, hash = 0;
+
+	/* a stupid checksum */
+	for (i = 0; i < p->len; i++)
+		hash += ((p->prop[i] & ~0x10) + 1) * i;
+
+	return hash;
+}
+
+/*
+ * This filters out VPD blobs and other annoyances from the devicetree output.
+ * We don't actually care about the contents of the blob, we just want to make
+ * sure it's there and that we aren't accidently corrupting the contents.
+ */
+static void squash_blobs(struct dt_node *root)
+{
+	struct dt_node *n;
+	struct dt_property *p;
+
+	list_for_each(&root->properties, p, list) {
+		if (strstarts(p->name, DT_PRIVATE))
+			continue;
+
+		/*
+		 * Consider any property larger than 512 bytes a blob that can
+		 * be removed. This number was picked out of thin in so don't
+		 * feel bad about changing it.
+		 */
+		if (p->len > 512) {
+			u32 hash = hash_prop(p);
+			u32 *val = (u32 *) p->prop;
+
+			/* Add a sentinel so we know it was truncated */
+			val[0] = cpu_to_be32(0xcafebeef);
+			val[1] = cpu_to_be32(p->len);
+			val[2] = cpu_to_be32(hash);
+			p->len = 3 * sizeof(u32);
+		}
+	}
+
+	list_for_each(&root->children, n, list)
+		squash_blobs(n);
+}
+
+static void dump_hdata_fdt(struct dt_node *root)
+{
+	void *fdt_blob;
+
+	fdt_blob = create_dtb(root, false);
+
+	if (!fdt_blob) {
+		fprintf(stderr, "Unable to make flattened DT, no FDT written\n");
+		return;
+	}
+
+	fwrite(fdt_blob, fdt_totalsize(fdt_blob), 1, stdout);
+
+	free(fdt_blob);
+}
+
 int main(int argc, char *argv[])
 {
 	int fd, r, i = 0, opt_count = 0;
-	bool verbose = false, quiet = false, tree_only = false, new_spira = false;
+	bool verbose = false, quiet = false, new_spira = false, blobs = false;
 
 	while (argv[++i]) {
 		if (strcmp(argv[i], "-v") == 0) {
@@ -157,11 +234,27 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "-q") == 0) {
 			quiet = true;
 			opt_count++;
-		} else if (strcmp(argv[i], "-t") == 0) {
-			tree_only = true;
-			opt_count++;
 		} else if (strcmp(argv[i], "-s") == 0) {
 			new_spira = true;
+			opt_count++;
+		} else if (strcmp(argv[i], "-b") == 0) {
+			blobs = true;
+			opt_count++;
+		} else if (strcmp(argv[i], "-7") == 0) {
+			fake_pvr_type = PVR_TYPE_P7;
+			proc_gen = proc_gen_p7;
+			opt_count++;
+		} else if (strcmp(argv[i], "-8E") == 0) {
+			fake_pvr_type = PVR_TYPE_P8;
+			proc_gen = proc_gen_p8;
+			opt_count++;
+		} else if (strcmp(argv[i], "-8") == 0) {
+			fake_pvr_type = PVR_TYPE_P8;
+			proc_gen = proc_gen_p8;
+			opt_count++;
+		} else if (strcmp(argv[i], "-9") == 0) {
+			fake_pvr_type = PVR_TYPE_P9;
+			proc_gen = proc_gen_p9;
 			opt_count++;
 		}
 	}
@@ -169,10 +262,20 @@ int main(int argc, char *argv[])
 	argc -= opt_count;
 	argv += opt_count;
 	if (argc != 3) {
-		errx(1, "Usage:\n"
-		        "       hdata [-v|-q|-t] <spira-dump> <heap-dump>\n"
-		        "       hdata -s [-v|-q|-t] <spirah-dump> <spiras-dump>\n");
+		errx(1, "Converts HDAT dumps to DTB.\n"
+		     "\n"
+		     "Usage:\n"
+		     "	hdata <opts> <spira-dump> <heap-dump>\n"
+		     "	hdata <opts> -s <spirah-dump> <spiras-dump>\n"
+		     "Options: \n"
+		     "	-v Verbose\n"
+		     "	-q Quiet mode\n"
+		     "	-b Keep blobs in the output\n"
+		     "\n"
+		     "Pipe to 'dtc -I dtb -O dts' for human readable\n");
 	}
+
+	phys_map_init();
 
 	/* Copy in spira dump (assumes little has changed!). */
 	if (new_spira) {
@@ -232,13 +335,21 @@ int main(int argc, char *argv[])
 		fclose(stderr);
 	}
 
-	if(parse_hdat(false, 0) < 0) {
+	dt_root = dt_new_root("");
+
+	if(parse_hdat(false) < 0) {
 		fprintf(stderr, "FATAL ERROR parsing HDAT\n");
 		exit(EXIT_FAILURE);
 	}
 
+	mem_region_init();
+	mem_region_release_unused();
+
+	if (!blobs)
+		squash_blobs(dt_root);
+
 	if (!quiet)
-		dump_dt(dt_root, 0, !tree_only);
+		dump_hdata_fdt(dt_root);
 
 	dt_free(dt_root);
 	return 0;

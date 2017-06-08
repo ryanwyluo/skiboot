@@ -39,6 +39,7 @@
  * Refer to pci-slot.h for the default PCI state set
  * when you're going to change below values.
  */
+<<<<<<< HEAD
 #define FIRENZE_PCI_SLOT_NORMAL			0x00000000
 #define FIRENZE_PCI_SLOT_LINK			0x00000100
 #define   FIRENZE_PCI_SLOT_LINK_START		0x00000101
@@ -60,6 +61,27 @@
 #define FIRENZE_PCI_SLOT_SPOWER			0x00000700
 #define   FIRENZE_PCI_SLOT_SPOWER_START		0x00000701
 #define   FIRENZE_PCI_SLOT_SPOWER_DONE		0x00000702
+=======
+#define FIRENZE_PCI_SLOT_NORMAL			PCI_SLOT_STATE_NORMAL
+#define FIRENZE_PCI_SLOT_LINK			PCI_SLOT_STATE_LINK
+#define   FIRENZE_PCI_SLOT_LINK_START		(FIRENZE_PCI_SLOT_LINK + 1)
+#define FIRENZE_PCI_SLOT_HRESET			PCI_SLOT_STATE_HRESET
+#define   FIRENZE_PCI_SLOT_HRESET_START		(FIRENZE_PCI_SLOT_HRESET + 1)
+#define FIRENZE_PCI_SLOT_FRESET			PCI_SLOT_STATE_FRESET
+#define   FIRENZE_PCI_SLOT_FRESET_START		(FIRENZE_PCI_SLOT_FRESET + 1)
+#define   FIRENZE_PCI_SLOT_FRESET_WAIT_RSP	(FIRENZE_PCI_SLOT_FRESET + 2)
+#define   FIRENZE_PCI_SLOT_FRESET_DELAY		(FIRENZE_PCI_SLOT_FRESET + 3)
+#define   FIRENZE_PCI_SLOT_FRESET_POWER_STATE	(FIRENZE_PCI_SLOT_FRESET + 4)
+#define   FIRENZE_PCI_SLOT_FRESET_POWER_OFF	(FIRENZE_PCI_SLOT_FRESET + 5)
+#define   FIRENZE_PCI_SLOT_FRESET_POWER_ON	(FIRENZE_PCI_SLOT_FRESET + 6)
+#define   FIRENZE_PCI_SLOT_PERST_DEASSERT	(FIRENZE_PCI_SLOT_FRESET + 7)
+#define   FIRENZE_PCI_SLOT_PERST_DELAY		(FIRENZE_PCI_SLOT_FRESET + 8)
+#define FIRENZE_PCI_SLOT_GPOWER			PCI_SLOT_STATE_GPOWER
+#define   FIRENZE_PCI_SLOT_GPOWER_START		(FIRENZE_PCI_SLOT_GPOWER + 1)
+#define FIRENZE_PCI_SLOT_SPOWER			PCI_SLOT_STATE_SPOWER
+#define   FIRENZE_PCI_SLOT_SPOWER_START		(FIRENZE_PCI_SLOT_SPOWER + 1)
+#define   FIRENZE_PCI_SLOT_SPOWER_DONE		(FIRENZE_PCI_SLOT_SPOWER + 2)
+>>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 
 /* Timeout for power status */
 #define FIRENZE_PCI_SLOT_RETRIES	500
@@ -507,7 +529,8 @@ static int64_t firenze_pci_slot_freset(struct pci_slot *slot)
 					msecs_to_tb(FIRENZE_PCI_SLOT_DELAY));
 		}
 
-		/* Fall through: Power is off, turn it on */
+		/* Power is off, turn it on */
+		/* Fallthrough */
 	case FIRENZE_PCI_SLOT_FRESET_POWER_OFF:
 		/* Update last power status */
 		pval = (uint8_t *)(plat_slot->req->rw_buf);
@@ -653,6 +676,16 @@ static int64_t firenze_pci_slot_set_power_state(struct pci_slot *slot,
 	if (slot->power_state == val)
 		return OPAL_SUCCESS;
 
+	/* Update with the requested power state and bail immediately when
+	 * surprise hotplug is supported on the slot. It keeps the power
+	 * supply to the slot on and it guarentees the link state change
+	 * events will be raised properly during surprise hot add/remove.
+	 */
+	if (slot->surprise_pluggable) {
+		slot->power_state = val;
+		return OPAL_SUCCESS;
+	}
+
 	slot->power_state = val;
 	pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_START);
 
@@ -797,27 +830,12 @@ static void firenze_pci_slot_fixup(struct pci_slot *slot,
 	}
 }
 
-static void firenze_pci_slot_init(struct pci_slot *slot)
+static void firenze_pci_setup_power_mgt(struct pci_slot *slot,
+					struct firenze_pci_slot *plat_slot,
+					struct firenze_pci_slot_info *info)
 {
-	struct lxvpd_pci_slot *s = slot->data;
-	struct firenze_pci_slot *plat_slot = slot->data;
-	struct firenze_pci_slot_info *info = NULL;
-	uint32_t vdid;
 	uint8_t buddy;
-	int i;
 
-	/* Search for PCI slot info */
-	for (i = 0; i < ARRAY_SIZE(firenze_pci_slots); i++) {
-		if (firenze_pci_slots[i].index == s->slot_index &&
-		    !strcmp(firenze_pci_slots[i].label, s->label)) {
-			info = &firenze_pci_slots[i];
-			break;
-		}
-	}
-	if (!info)
-		return;
-
-	/* Search I2C bus for external power mgt */
 	buddy = info->buddy;
 	plat_slot->i2c_bus = firenze_pci_find_i2c_bus(info->chip_id,
 						      info->master_id,
@@ -856,6 +874,30 @@ static void firenze_pci_slot_init(struct pci_slot *slot)
 			plat_slot->i2c_bus = NULL;
 		}
 	}
+}
+
+static void firenze_pci_slot_init(struct pci_slot *slot)
+{
+	struct lxvpd_pci_slot *s = slot->data;
+	struct firenze_pci_slot *plat_slot = slot->data;
+	struct firenze_pci_slot_info *info = NULL;
+	uint32_t vdid;
+	int i;
+
+	/* Search for PCI slot info */
+	for (i = 0; i < ARRAY_SIZE(firenze_pci_slots); i++) {
+		if (firenze_pci_slots[i].index == s->slot_index &&
+		    !strcmp(firenze_pci_slots[i].label, s->label)) {
+			info = &firenze_pci_slots[i];
+			break;
+		}
+	}
+	if (!info)
+		return;
+
+	/* Search I2C bus for external power mgt */
+	if (slot->power_ctl)
+		firenze_pci_setup_power_mgt(slot, plat_slot, info);
 
 	/*
 	 * If the slot has external power logic, to override the

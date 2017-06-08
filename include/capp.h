@@ -1,4 +1,4 @@
-/* Copyright 2013-2014 IBM Corp.
+/* Copyright 2013-2016 IBM Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#ifndef __CAPP_H
+#define __CAPP_H
 
 struct capp_lid_hdr {
 	be64 eyecatcher;	/* 'CAPPLIDH' in ASCII */
@@ -64,8 +67,11 @@ enum capp_reg {
 #define CAPP_SNP_ARRAY_WRITE_REG		0x2013801
 #define CAPP_APC_MASTER_ARRAY_WRITE_REG		0x2013802
 
-#define CAPP_FIR                                0x2013000
-#define CAPP_ERR_RPT_CLR                        0x2013013
+#define CAPP_FIR				0x2013000
+#define CAPP_FIR_MASK				0x2013003
+#define CAPP_FIR_ACTION0			0x2013006
+#define CAPP_FIR_ACTION1			0x2013007
+#define CAPP_ERR_RPT_CLR			0x2013013
 #define APC_MASTER_PB_CTRL			0x2013018
 #define APC_MASTER_CAPI_CTRL			0x2013019
 #define TRANSPORT_CONTROL			0x201301C
@@ -87,3 +93,5 @@ enum capp_reg {
  * The addresses of CAPP1 XSCOMS registers are 0x180 away.
  */
 #define CAPP1_REG_OFFSET 0x180
+
+#endif /* __CAPP_H */

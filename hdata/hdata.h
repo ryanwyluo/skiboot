@@ -23,6 +23,7 @@ extern void memory_parse(void);
 extern int paca_parse(void);
 extern bool pcia_parse(void);
 extern void fsp_parse(void);
+extern void bmc_parse(void);
 extern void io_parse(void);
 extern struct dt_node *dt_add_vpd_node(const struct HDIF_common_hdr *hdr,
 				       int indx_fru, int indx_vpd);
@@ -46,6 +47,8 @@ extern void slca_vpd_add_loc_code(struct dt_node *node, uint16_t slca_index);
 extern void slca_dt_add_sai_node(void);
 
 extern bool hservices_from_hdat(const void *fdt, size_t size);
+int parse_i2c_devs(const struct HDIF_common_hdr *hdr, int idata_index,
+	struct dt_node *xscom);
 
 #endif /* __HDATA_H */
 

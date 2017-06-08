@@ -1,4 +1,4 @@
-/* Copyright 2013-2014 IBM Corp.
+/* Copyright 2013-2016 IBM Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,12 +41,15 @@ struct slot_table_entry {
 	const struct slot_table_entry *children;
 };
 
+extern const struct bmc_platform astbmc_ami;
+
 extern void astbmc_early_init(void);
 extern int64_t astbmc_ipmi_reboot(void);
 extern int64_t astbmc_ipmi_power_down(uint64_t request);
 extern void astbmc_init(void);
 extern void astbmc_ext_irq_serirq_cpld(unsigned int chip_id);
 extern int pnor_init(void);
+extern void check_all_slot_table(void);
 
 extern void slot_table_init(const struct slot_table_entry *top_table);
 extern void slot_table_get_slot_info(struct phb *phb, struct pci_device * pd);

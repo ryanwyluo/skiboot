@@ -39,7 +39,7 @@
 #define MSR_LE		PPC_BIT(63)	/* Little Endian */
 
 /* PIR */
-#define SPR_PIR_P9_MASK		0x07ff	/* Mask of implemented bits */
+#define SPR_PIR_P9_MASK		0x7fff	/* Mask of implemented bits */
 #define SPR_PIR_P8_MASK		0x1fff	/* Mask of implemented bits */
 #define SPR_PIR_P7_MASK		0x03ff	/* Mask of implemented bits */
 
@@ -67,6 +67,7 @@
 #define SPR_SPURR	0x134	/* RW: Scaled Processor Utilization Resource */
 #define SPR_PURR	0x135	/* RW: Processor Utilization Resource reg */
 #define SPR_HDEC	0x136	/* RW: Hypervisor Decrementer */
+#define SPR_HRMOR	0x139	/* RW: Hypervisor Real Mode Offset reg */
 #define SPR_HSRR0	0x13a	/* RW: HV Exception save/restore reg 0 */
 #define SPR_HSRR1	0x13b	/* RW: HV Exception save/restore reg 1 */
 #define SPR_TFMR	0x13d
@@ -163,6 +164,7 @@
 /* Bits in HID0 */
 #define SPR_HID0_POWER8_4LPARMODE	PPC_BIT(2)
 #define SPR_HID0_POWER8_2LPARMODE	PPC_BIT(6)
+#define SPR_HID0_POWER8_DYNLPARDIS	PPC_BIT(15)
 #define SPR_HID0_POWER8_HILE		PPC_BIT(19)
 #define SPR_HID0_POWER9_HILE		PPC_BIT(4)
 #define SPR_HID0_POWER8_ENABLE_ATTN	PPC_BIT(31)
@@ -195,6 +197,7 @@
 #define smt_medium_low	or 6,6,6
 #define smt_extra_high	or 7,7,7
 #define smt_very_low	or 31,31,31
+#define smt_lowest	smt_low ; smt_very_low
 
 #else /* __ASSEMBLY__ */
 
@@ -212,6 +215,7 @@ static inline void smt_medium_high(void){ asm volatile("or 5,5,5");	}
 static inline void smt_medium_low(void)	{ asm volatile("or 6,6,6");	}
 static inline void smt_extra_high(void)	{ asm volatile("or 7,7,7");	}
 static inline void smt_very_low(void)	{ asm volatile("or 31,31,31");	}
+static inline void smt_lowest(void)	{ smt_low(); smt_very_low();	}
 
 /*
  * SPR access functions

@@ -55,6 +55,7 @@ struct fsp_serial {
 	struct fsp_serbuf_hdr	*out_buf;
 	struct fsp_msg		*poke_msg;
 	u8			waiting;
+	u64			irq;
 };
 
 #define SER_BUFFER_SIZE 0x00040000UL
@@ -193,6 +194,7 @@ static size_t fsp_write_vserial(struct fsp_serial *fs, const char *buf,
 #ifndef DISABLE_CON_PENDING_EVT
 	opal_update_pending_evt(OPAL_EVENT_CONSOLE_OUTPUT,
 				OPAL_EVENT_CONSOLE_OUTPUT);
+	opal_update_pending_evt(fs->irq, fs->irq);
 #endif
 	return len;
 }
@@ -382,7 +384,7 @@ static void fsp_close_vserial(struct fsp_msg *msg)
 		set_console(NULL);
 	}
 #endif
-	
+
 	lock(&fsp_con_lock);
 	if (fs->open) {
 		fs->open = false;
@@ -465,6 +467,7 @@ static bool fsp_con_msg_vt(u32 cmd_sub_mod, struct fsp_msg *msg)
 		lock(&fsp_con_lock);
 		opal_update_pending_evt(OPAL_EVENT_CONSOLE_INPUT,
 					OPAL_EVENT_CONSOLE_INPUT);
+		opal_update_pending_evt(fs->irq, fs->irq);
 		unlock(&fsp_con_lock);
 	}
 	return true;
@@ -704,8 +707,10 @@ static int64_t fsp_console_read(int64_t term_number, int64_t *length,
 			}
 		}
 	}
-	if (!pending)
+	if (!pending) {
+		opal_update_pending_evt(fs->irq, 0);
 		opal_update_pending_evt(OPAL_EVENT_CONSOLE_INPUT, 0);
+	}
 
 	unlock(&fsp_con_lock);
 
@@ -741,11 +746,14 @@ void fsp_console_poll(void *data __unused)
 
 			if (!fs->open)
 				continue;
-			if (sb->next_out == sb->next_in)
+			if (sb->next_out == sb->next_in) {
+				opal_update_pending_evt(fs->irq, 0);
 				continue;
-			if (fs->log_port)
-				__flush_console(true);
-			else {
+			}
+			if (fs->log_port) {
+				flush_console();
+				opal_update_pending_evt(fs->irq, 0);
+			} else {
 #ifdef OPAL_DEBUG_CONSOLE_POLL
 				if (debug < 5) {
 					prlog(PR_DEBUG,"OPAL: %d still pending"
@@ -775,11 +783,6 @@ void fsp_console_init(void)
 	if (!fsp_present())
 		return;
 
-	opal_register(OPAL_CONSOLE_READ, fsp_console_read, 3);
-	opal_register(OPAL_CONSOLE_WRITE_BUFFER_SPACE,
-		      fsp_console_write_buffer_space, 2);
-	opal_register(OPAL_CONSOLE_WRITE, fsp_console_write, 3);
-
 	/* Wait until we got the intf query before moving on */
 	while (!got_intf_query)
 		opal_run_pollers();
@@ -808,7 +811,24 @@ void fsp_console_init(void)
 	}
 
 	op_display(OP_LOG, OP_MOD_FSPCON, 0x0005);
+
+	set_opal_console(&fsp_opal_con);
 }
+
+static int64_t fsp_console_flush(int64_t terminal __unused)
+{
+	/* FIXME: There's probably something we can do here... */
+	return OPAL_PARAMETER;
+}
+
+struct opal_con_ops fsp_opal_con = {
+	.name = "FSP OPAL console",
+	.init = NULL, /* all the required setup is done in fsp_console_init() */
+	.read = fsp_console_read,
+	.write = fsp_console_write,
+	.space = fsp_console_write_buffer_space,
+	.flush = fsp_console_flush,
+};
 
 static void flush_all_input(void)
 {
@@ -884,6 +904,9 @@ static void reopen_all_hvsi(void)
 
 void fsp_console_reset(void)
 {
+	if (!fsp_present())
+		return;
+
 	prlog(PR_NOTICE, "FSP: Console reset !\n");
 
 	/* This is called on a fast-reset. To work around issues with HVSI
@@ -906,32 +929,32 @@ void fsp_console_reset(void)
 
 void fsp_console_add_nodes(void)
 {
+	struct dt_node *opal_event;
 	unsigned int i;
-	struct dt_node *consoles;
 
-	consoles = dt_new(opal_node, "consoles");
-	dt_add_property_cells(consoles, "#address-cells", 1);
-	dt_add_property_cells(consoles, "#size-cells", 0);
+	opal_event = dt_find_by_name(opal_node, "event");
+
 	for (i = 0; i < MAX_SERIAL; i++) {
 		struct fsp_serial *fs = &fsp_serials[i];
 		struct dt_node *fs_node;
-		char name[32];
+		const char *type;
 
 		if (fs->log_port || !fs->available)
 			continue;
 
-		snprintf(name, sizeof(name), "serial@%d", i);
-		fs_node = dt_new(consoles, name);
 		if (fs->rsrc_id == 0xffff)
-			dt_add_property_string(fs_node, "compatible",
-					       "ibm,opal-console-raw");
+			type = "raw";
 		else
-			dt_add_property_string(fs_node, "compatible",
-					       "ibm,opal-console-hvsi");
-		dt_add_property_cells(fs_node,
-				     "#write-buffer-size", SER_BUF_DATA_SIZE);
-		dt_add_property_cells(fs_node, "reg", i);
-		dt_add_property_string(fs_node, "device_type", "serial");
+			type = "hvsi";
+
+		fs_node = add_opal_console_node(i, type, SER_BUF_DATA_SIZE);
+
+		fs->irq = opal_dynamic_event_alloc();
+		dt_add_property_cells(fs_node, "interrupts", ilog2(fs->irq));
+
+		if (opal_event)
+			dt_add_property_cells(fs_node, "interrupt-parent",
+					      opal_event->phandle);
 	}
 }
 
@@ -985,6 +1008,8 @@ void fsp_console_select_stdout(void)
 			 */
 		}
 	}
+	dt_check_del_prop(dt_chosen, "linux,stdout-path");
+
 	if (fsp_serials[1].open && use_serial) {
 		dt_add_property_string(dt_chosen, "linux,stdout-path",
 				       "/ibm,opal/consoles/serial@1");

@@ -18,9 +18,6 @@ mconfig stop_on_ill MAMBO_STOP_ON_ILL false
 
 # Location of application binary to load
 mconfig boot_image SKIBOOT ../../skiboot.lid
-if { [info exists env(SKIBOOT)] } {
-    mconfig boot_image SKIBOOT env(SKIBOOT)
-}
 
 # Boot: Memory location to load boot_image, for binary or vmlinux
 mconfig boot_load MAMBO_BOOT_LOAD 0x30000000
@@ -33,6 +30,8 @@ if { ![info exists env(SKIBOOT_ZIMAGE)] } {
 	error "Please set SKIBOOT_ZIMAGE to the path of your zImage.epapr"
 }
 mconfig payload PAYLOAD $env(SKIBOOT_ZIMAGE)
+
+mconfig linux_cmdline LINUX_CMDLINE ""
 
 # Paylod: Memory location for a Linux style ramdisk/initrd
 mconfig payload_addr PAYLOAD_ADDR 0x20000000;
@@ -83,7 +82,8 @@ if { $default_config == "PEGASUS" } {
     myconf config processor/initial/PVR 0x4b0201
 }
 if { $default_config == "P9" } {
-    # make sure we look like a POWER9
+    # make sure we look like a POWER9 DD2
+    myconf config processor/initial/PVR 0x4e0200
     myconf config processor/initial/SIM_CTRL1 0xc228000400000000
 }
 if { [info exists env(SKIBOOT_SIMCONF)] } {
@@ -105,6 +105,22 @@ if {![info exists of::encode_compat]} {
 # allows running mambo in another directory to the one skiboot.tcl is in.
 if { [file exists mambo_utils.tcl] } then {
 	source mambo_utils.tcl
+
+	if { [info exists env(VMLINUX_MAP)] } {
+		global linux_symbol_map
+
+		set fp [open $env(VMLINUX_MAP) r]
+		set linux_symbol_map [read $fp]
+		close $fp
+	}
+
+	if { [info exists env(SKIBOOT_MAP)] } {
+		global skiboot_symbol_map
+
+		set fp [open $env(SKIBOOT_MAP) r]
+		set skiboot_symbol_map [read $fp]
+		close $fp
+	}
 }
 
 #
@@ -170,15 +186,52 @@ lappend compat "ibm,power8-xscom"
 set compat [of::encode_compat $compat]
 mysim of addprop $xscom_node byte_array "compatible" $compat
 
+# Load any initramfs
+set cpio_start 0x80000000
+set cpio_end $cpio_start
 if { [info exists env(SKIBOOT_INITRD)] } {
-    set cpio_file $env(SKIBOOT_INITRD)
+
+    set cpios [split $env(SKIBOOT_INITRD) ","]
+
+    foreach cpio_file $cpios {
+	    set cpio_file [string trim $cpio_file]
+	    set cpio_size [file size $cpio_file]
+	    mysim mcm 0 memory fread $cpio_end $cpio_size $cpio_file
+	    set cpio_end [expr $cpio_end + $cpio_size]
+    }
+
     set chosen_node [mysim of find_device /chosen]
-    set cpio_size [file size $cpio_file]
-    set cpio_start 0x80000000
-    set cpio_end [expr $cpio_start + $cpio_size]
     mysim of addprop $chosen_node int "linux,initrd-start" $cpio_start
     mysim of addprop $chosen_node int "linux,initrd-end"   $cpio_end
-    mysim mcm 0 memory fread $cpio_start $cpio_size $cpio_file
+}
+
+# Default NVRAM is blank and will be formatted by Skiboot if no file is provided
+set fake_nvram_start $cpio_end
+set fake_nvram_size 0x40000
+# Load any fake NVRAM file if provided
+if { [info exists env(SKIBOOT_NVRAM)] } {
+    # Set up and write NVRAM file
+    set fake_nvram_file $env(SKIBOOT_NVRAM)
+    set fake_nvram_size [file size $fake_nvram_file]
+    mysim mcm 0 memory fread $fake_nvram_start $fake_nvram_size $fake_nvram_file
+}
+
+# Add device tree entry for NVRAM
+set reserved_memory [mysim of addchild $root_node "reserved-memory" ""]
+mysim of addprop $reserved_memory int "#size-cells" 2
+mysim of addprop $reserved_memory int "#address-cells" 2
+mysim of addprop $reserved_memory empty "ranges" ""
+
+set fake_nvram_node [mysim of addchild $reserved_memory "ibm,fake-nvram" ""]
+set reg [list $fake_nvram_start $fake_nvram_size ]
+mysim of addprop $fake_nvram_node array64 "reg" reg
+mysim of addprop $fake_nvram_node empty "name" "ibm,fake-nvram"
+
+# Allow P9 to use all idle states
+if { $default_config == "P9" } {
+    set opal_node [mysim of addchild $root_node "ibm,opal" ""]
+    set power_mgt_node [mysim of addchild $opal_node "power-mgt" ""]
+    mysim of addprop $power_mgt_node int "ibm,enabled-stop-levels" 0xffffffff
 }
 
 # Init CPUs
@@ -191,7 +244,33 @@ for { set c 0 } { $c < $mconf(cpus) } { incr c } {
     mysim of addprop $cpu_node array64 "ibm,processor-segment-sizes" reg
 
     set reg {}
+    lappend reg 0x0000000c 0x00000010 0x00000018 0x00000022
+    mysim of addprop $cpu_node array "ibm,processor-page-sizes" reg
+
+    set reg {}
+    lappend reg 0x0c 0x000 3 0x0c 0x0000 ;#  4K seg  4k pages
+    lappend reg              0x10 0x0007 ;#  4K seg 64k pages
+    lappend reg              0x18 0x0038 ;#  4K seg 16M pages
+    lappend reg 0x10 0x110 2 0x10 0x0001 ;# 64K seg 64k pages
+    lappend reg              0x18 0x0008 ;# 64K seg 16M pages
+    lappend reg 0x18 0x100 1 0x18 0x0000 ;# 16M seg 16M pages
+    lappend reg 0x22 0x120 1 0x22 0x0003 ;# 16G seg 16G pages
+    mysim of addprop $cpu_node array "ibm,segment-page-sizes" reg
+
     if { $default_config == "P9" } {
+        # Set actual page size encodings
+        set reg {}
+        # 4K pages
+        lappend reg 0x0000000c
+        # 64K pages
+        lappend reg 0xa0000010
+        # 2M pages
+        lappend reg 0x20000015
+        # 1G pages
+        lappend reg 0x4000001e
+        mysim of addprop $cpu_node array "ibm,processor-radix-AP-encodings" reg
+
+        set reg {}
 	# POWER9 PAPR defines upto bytes 62-63
 	# header + bytes 0-5
 	lappend reg 0x4000f63fc70080c0
@@ -211,10 +290,12 @@ for { set c 0 } { $c < $mconf(cpus) } { incr c } {
 	lappend reg 0x8000800080008000
 	# bytes 62-69
 	lappend reg 0x8000000000000000
+	mysim of addprop $cpu_node array64 "ibm,pa-features" reg
     } else {
+        set reg {}
 	lappend reg 0x6000f63fc70080c0
+	mysim of addprop $cpu_node array64 "ibm,pa-features" reg
     }
-    mysim of addprop $cpu_node array64 "ibm,pa-features" reg
 
     set irqreg [list]
     for { set t 0 } { $t < $mconf(threads) } { incr t } {
@@ -227,6 +308,40 @@ for { set c 0 } { $c < $mconf(cpus) } { incr c } {
     }
     mysim of addprop $cpu_node array "ibm,ppc-interrupt-server#s" irqreg
 }
+
+mconfig enable_stb SKIBOOT_ENABLE_MAMBO_STB 0
+
+if { [info exists env(SKIBOOT_ENABLE_MAMBO_STB)] } {
+    set stb_node [ mysim of addchild $root_node "ibm,secureboot" "" ]
+    mysim of addprop $stb_node string "compatible" "ibm,secureboot-v1-softrom"
+    mysim of addprop $stb_node string "secure-enabled" ""
+    mysim of addprop $stb_node string "trusted-enabled" ""
+    mysim of addprop $stb_node string "hash-algo" "sha512"
+    set hw_key_hash {}
+    lappend hw_key_hash 0x40d487ff
+    lappend hw_key_hash 0x7380ed6a
+    lappend hw_key_hash 0xd54775d5
+    lappend hw_key_hash 0x795fea0d
+    lappend hw_key_hash 0xe2f541fe
+    lappend hw_key_hash 0xa9db06b8
+    lappend hw_key_hash 0x466a42a3
+    lappend hw_key_hash 0x20e65f75
+    lappend hw_key_hash 0xb4866546
+    lappend hw_key_hash 0x0017d907
+    lappend hw_key_hash 0x515dc2a5
+    lappend hw_key_hash 0xf9fc5095
+    lappend hw_key_hash 0x4d6ee0c9
+    lappend hw_key_hash 0xb67d219d
+    lappend hw_key_hash 0xfb708535
+    lappend hw_key_hash 0x1d01d6d1
+    mysim of addprop $stb_node array "hw-key-hash" hw_key_hash
+}
+
+# Kernel command line args, appended to any from the device tree
+# e.g.: of::set_bootargs "xmon"
+#
+# Can be set from the environment by setting LINUX_CMDLINE.
+of::set_bootargs $mconf(linux_cmdline)
 
 # Load images
 

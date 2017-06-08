@@ -95,22 +95,34 @@ static uint64_t xscom_wait_done(void)
 static void xscom_reset(uint32_t gcid)
 {
 	u64 hmer;
+	uint32_t recv_status_reg, log_reg, err_reg;
 
 	/* Clear errors in HMER */
 	mtspr(SPR_HMER, HMER_CLR_MASK);
 
+	/* Setup local and target scom addresses */
+	if (proc_gen == proc_gen_p9) {
+		recv_status_reg = 0x00090018;
+		log_reg = 0x0090012;
+		err_reg = 0x0090013;
+	} else {
+		recv_status_reg = 0x202000f;
+		log_reg = 0x2020007;
+		err_reg = 0x2020009;
+	}
+
 	/* First we need to write 0 to a register on our chip */
-	out_be64(xscom_addr(this_cpu()->chip_id, 0x202000f), 0);
+	out_be64(xscom_addr(this_cpu()->chip_id, recv_status_reg), 0);
 	hmer = xscom_wait_done();
 	if (hmer & SPR_HMER_XSCOM_FAIL)
 		goto fail;
 
 	/* Then we need to clear those two other registers on the target */
-	out_be64(xscom_addr(gcid, 0x2020007), 0);
+	out_be64(xscom_addr(gcid, log_reg), 0);
 	hmer = xscom_wait_done();
 	if (hmer & SPR_HMER_XSCOM_FAIL)
 		goto fail;
-	out_be64(xscom_addr(gcid, 0x2020009), 0);
+	out_be64(xscom_addr(gcid, err_reg), 0);
 	hmer = xscom_wait_done();
 	if (hmer & SPR_HMER_XSCOM_FAIL)
 		goto fail;
@@ -305,7 +317,8 @@ static int __xscom_write(uint32_t gcid, uint32_t pcb_addr, uint64_t val)
 /*
  * Indirect XSCOM access functions
  */
-static int xscom_indirect_read(uint32_t gcid, uint64_t pcb_addr, uint64_t *val)
+static int xscom_indirect_read_form0(uint32_t gcid, uint64_t pcb_addr,
+				     uint64_t *val)
 {
 	uint32_t addr;
 	uint64_t data;
@@ -348,7 +361,23 @@ static int xscom_indirect_read(uint32_t gcid, uint64_t pcb_addr, uint64_t *val)
 	return rc;
 }
 
-static int xscom_indirect_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val)
+static int xscom_indirect_form(uint64_t pcb_addr)
+{
+	return (pcb_addr >> 60) & 1;
+}
+
+static int xscom_indirect_read(uint32_t gcid, uint64_t pcb_addr, uint64_t *val)
+{
+	uint64_t form = xscom_indirect_form(pcb_addr);
+
+	if ((proc_gen == proc_gen_p9) && (form == 1))
+		return OPAL_UNSUPPORTED;
+
+	return xscom_indirect_read_form0(gcid, pcb_addr, val);
+}
+
+static int xscom_indirect_write_form0(uint32_t gcid, uint64_t pcb_addr,
+				      uint64_t val)
 {
 	uint32_t addr;
 	uint64_t data;
@@ -356,6 +385,10 @@ static int xscom_indirect_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val)
 
 	if (proc_gen < proc_gen_p8)
 		return OPAL_UNSUPPORTED;
+
+	/* Only 16 bit data with indirect */
+	if (val & ~(XSCOM_ADDR_IND_DATA))
+		return OPAL_PARAMETER;
 
 	/* Write indirect address & data */
 	addr = pcb_addr & 0x7fffffff;
@@ -386,6 +419,34 @@ static int xscom_indirect_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val)
 	return rc;
 }
 
+static int xscom_indirect_write_form1(uint32_t gcid, uint64_t pcb_addr,
+				      uint64_t val)
+{
+	uint32_t addr;
+	uint64_t data;
+
+	if (proc_gen < proc_gen_p9)
+		return OPAL_UNSUPPORTED;
+	if (val & ~(XSCOM_DATA_IND_FORM1_DATA))
+		return OPAL_PARAMETER;
+
+	/* Mangle address and data for form1 */
+	addr = (pcb_addr & 0x000ffffffff);
+	data = (pcb_addr & 0xfff00000000) << 20;
+	data |= val;
+	return __xscom_write(gcid, addr, data);
+}
+
+static int xscom_indirect_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val)
+{
+	uint64_t form = xscom_indirect_form(pcb_addr);
+
+	if ((proc_gen == proc_gen_p9) && (form == 1))
+		return xscom_indirect_write_form1(gcid, pcb_addr, val);
+
+	return xscom_indirect_write_form0(gcid, pcb_addr, val);
+}
+
 static uint32_t xscom_decode_chiplet(uint32_t partid, uint64_t *pcb_addr)
 {
 	uint32_t gcid = (partid & 0x0fffffff) >> 4;
@@ -402,14 +463,30 @@ static uint32_t xscom_decode_chiplet(uint32_t partid, uint64_t *pcb_addr)
 	return gcid;
 }
 
+void _xscom_lock(void)
+{
+	lock(&xscom_lock);
+}
+
+void _xscom_unlock(void)
+{
+	unlock(&xscom_lock);
+}
+
 /*
  * External API
  */
-int xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val)
+int _xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val, bool take_lock)
 {
 	uint32_t gcid;
 	int rc;
 
+<<<<<<< HEAD
+=======
+	if (!opal_addr_valid(val))
+		return OPAL_PARAMETER;
+
+>>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	/* Due to a bug in some versions of the PRD wrapper app, errors
 	 * might not be properly forwarded to PRD, in which case the data
 	 * set here will be used. Rather than a random value let's thus
@@ -442,7 +519,8 @@ int xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val)
 	}
 
 	/* HW822317 requires us to do global locking */
-	lock(&xscom_lock);
+	if (take_lock)
+		lock(&xscom_lock);
 
 	/* Direct vs indirect access */
 	if (pcb_addr & XSCOM_ADDR_IND_FLAG)
@@ -451,13 +529,14 @@ int xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val)
 		rc = __xscom_read(gcid, pcb_addr & 0x7fffffff, val);
 
 	/* Unlock it */
-	unlock(&xscom_lock);
+	if (take_lock)
+		unlock(&xscom_lock);
 	return rc;
 }
 
 opal_call(OPAL_XSCOM_READ, xscom_read, 3);
 
-int xscom_write(uint32_t partid, uint64_t pcb_addr, uint64_t val)
+int _xscom_write(uint32_t partid, uint64_t pcb_addr, uint64_t val, bool take_lock)
 {
 	uint32_t gcid;
 	int rc;
@@ -485,7 +564,8 @@ int xscom_write(uint32_t partid, uint64_t pcb_addr, uint64_t val)
 	}
 
 	/* HW822317 requires us to do global locking */
-	lock(&xscom_lock);
+	if (take_lock)
+		lock(&xscom_lock);
 
 	/* Direct vs indirect access */
 	if (pcb_addr & XSCOM_ADDR_IND_FLAG)
@@ -494,7 +574,8 @@ int xscom_write(uint32_t partid, uint64_t pcb_addr, uint64_t val)
 		rc = __xscom_write(gcid, pcb_addr & 0x7fffffff, val);
 
 	/* Unlock it */
-	unlock(&xscom_lock);
+	if (take_lock)
+		unlock(&xscom_lock);
 	return rc;
 }
 opal_call(OPAL_XSCOM_WRITE, xscom_write, 3);
@@ -519,7 +600,7 @@ int64_t xscom_read_cfam_chipid(uint32_t partid, uint32_t *chip_id)
 	 */
 	if (chip_quirk(QUIRK_NO_F000F)) {
 		if (proc_gen == proc_gen_p9)
-			val = 0x100D104980000000UL; /* P9 Nimbus DD1.0 */
+			val = 0x200D104980000000UL; /* P9 Nimbus DD2.0 */
 		else
 			val = 0x221EF04980000000UL; /* P8 Murano DD2.1 */
 	} else
@@ -582,6 +663,36 @@ static void xscom_init_chip_info(struct proc_chip *chip)
 	/* Get EC level from CFAM ID */
 	chip->ec_level = ((val >> 16) & 0xf) << 4;
 	chip->ec_level |= (val >> 8) & 0xf;
+
+	/*
+	 * On P9 DD1.0, grab the ECID bits to differenciate
+	 * DD1.01, 1.02 etc...
+	 */
+	if (chip_quirk(QUIRK_MAMBO_CALLOUTS)) {
+		chip->ec_rev = 0;
+	} else if (proc_gen == proc_gen_p9 && chip->ec_level == 0x10) {
+		uint64_t ecid2 = 0;
+		uint8_t rev;
+		xscom_read(chip->id, 0x18002, &ecid2);
+		switch((ecid2 >> 45) & 7) {
+		case 0:
+			rev = 0;
+			break;
+		case 1:
+			rev = 1;
+			break;
+		case 3:
+			rev = 2;
+			break;
+		case 7:
+			rev = 3;
+			break;
+		default:
+			rev = 0;
+		}
+		printf("P9 DD1.0%d detected\n", rev);
+		chip->ec_rev = rev;
+	}
 }
 
 /*

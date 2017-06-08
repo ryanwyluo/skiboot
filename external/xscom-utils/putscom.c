@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 			got_val = true;
 			break;
 		case 'c':
-			chip_id = strtoul(optarg, NULL, 0);
+			chip_id = strtoul(optarg, NULL, 16);
 			break;
 		case 'v':
 			printf("xscom utils version %s\n", version);
@@ -92,10 +92,12 @@ int main(int argc, char *argv[])
 		fprintf(stderr,"Error %d writing XSCOM\n", rc);
 		exit(1);
 	}
-	rc = xscom_read(chip_id, addr, &val);
-	if (rc) {
-		fprintf(stderr,"Error %d reading XSCOM\n", rc);
-		exit(1);
+	if (xscom_readable(addr)) {
+		rc = xscom_read(chip_id, addr, &val);
+		if (rc) {
+			fprintf(stderr,"Error %d reading XSCOM\n", rc);
+			exit(1);
+		}
 	}
 	printf("%016" PRIx64 "\n", val);
 	return 0;

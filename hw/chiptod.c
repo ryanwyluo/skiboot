@@ -138,7 +138,8 @@
 static enum chiptod_type {
 	chiptod_unknown,
 	chiptod_p7,
-	chiptod_p8
+	chiptod_p8,
+	chiptod_p9
 } chiptod_type;
 
 enum chiptod_chip_role {
@@ -453,6 +454,9 @@ static enum chiptod_chip_status _chiptod_get_chip_status(int32_t chip_id)
 	uint64_t tod_status;
 	enum chiptod_chip_status status = -1;
 
+	if (chip_id < 0)
+		return chiptod_backup_disabled;
+
 	if (xscom_read(chip_id, TOD_STATUS, &tod_status)) {
 		prerror("XSCOM error reading TOD_STATUS reg\n");
 		return status;
@@ -475,6 +479,9 @@ chiptod_get_chip_status(enum chiptod_topology topology)
 static void chiptod_update_topology(enum chiptod_topology topo)
 {
 	int32_t chip_id = chiptod_topology_info[topo].id;
+
+	if (chip_id < 0)
+		return;
 
 	chiptod_topology_info[topo].role = chiptod_get_chip_role(topo, chip_id);
 	chiptod_topology_info[topo].status = chiptod_get_chip_status(topo);
@@ -621,7 +628,10 @@ static bool chiptod_to_tb(void)
 		prerror("XSCOM error reading PIB_MASTER\n");
 		return false;
 	}
-	if (chiptod_type == chiptod_p8) {
+	if (chiptod_type == chiptod_p9) {
+		tvbits = (this_cpu()->pir >> 2) & 0x1f;
+		tvbits |= 0x20;
+	} else if (chiptod_type == chiptod_p8) {
 		tvbits = (this_cpu()->pir >> 3) & 0xf;
 		tvbits |= 0x10;
 	} else {
@@ -1604,6 +1614,8 @@ static bool chiptod_probe(void)
 			    chiptod_type = chiptod_p7;
 		    if (dt_node_is_compatible(np,"ibm,power8-chiptod"))
 			    chiptod_type = chiptod_p8;
+		    if (dt_node_is_compatible(np,"ibm,power9-chiptod"))
+			    chiptod_type = chiptod_p9;
 		}
 
 		if (dt_has_node_property(np, "secondary", NULL))

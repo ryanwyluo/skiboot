@@ -26,6 +26,8 @@
 #include <timer.h>
 #include <ipmi.h>
 #include <timebase.h>
+#include <chip.h>
+#include <interrupts.h>
 
 /* BT registers */
 #define BT_CTRL			0
@@ -379,8 +381,9 @@ static void bt_expire_old_msg(uint64_t tb)
 
 	bt_msg = list_top(&bt.msgq, struct bt_msg, link);
 
-	if (bt_msg && bt_msg->tb > 0 &&
-	    (tb_compare(tb, bt_msg->tb + secs_to_tb(bt.caps.msg_timeout)) == TB_AAFTERB)) {
+	if (bt_msg && bt_msg->tb > 0 && !chip_quirk(QUIRK_SIMICS) &&
+	    (tb_compare(tb, bt_msg->tb +
+			secs_to_tb(bt.caps.msg_timeout)) == TB_AAFTERB)) {
 		if (bt_msg->send_count <= bt.caps.max_retries) {
 			/* A message timeout is usually due to the BMC
 			 * clearing the H2B_ATN flag without actually
@@ -626,8 +629,10 @@ void bt_init(void)
 
 	/* We support only one */
 	n = dt_find_compatible_node(dt_root, NULL, "ipmi-bt");
-	if (!n)
+	if (!n) {
+		prerror("No BT device\n");
 		return;
+	}
 
 	/* Get IO base */
 	prop = dt_find_property(n, "reg");
@@ -665,7 +670,8 @@ void bt_init(void)
 
 	irq = dt_prop_get_u32(n, "interrupts");
 	bt_lpc_client.interrupts = LPC_IRQ(irq);
-	lpc_register_client(dt_get_chip_id(n), &bt_lpc_client);
+	lpc_register_client(dt_get_chip_id(n), &bt_lpc_client,
+			    IRQ_ATTR_TARGET_OPAL);
 
 	/* Enqueue an IPMI message to ask the BMC about its BT capabilities */
 	get_bt_caps();
