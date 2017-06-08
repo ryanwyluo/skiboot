@@ -53,11 +53,8 @@
 #define OPAL_XSCOM_PARITY_ERROR	-28
 #define OPAL_XSCOM_TIMEOUT	-29
 #define OPAL_XSCOM_CTR_OFFLINED	-30
-<<<<<<< HEAD
-=======
 #define OPAL_XIVE_PROVISIONING	-31
 #define OPAL_XIVE_FREE_ACTIVE	-32
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 
 /* API Tokens (in r0) */
 #define OPAL_INVALID_CALL		       -1
@@ -1032,12 +1029,9 @@ enum opal_prd_msg_type {
 	OPAL_PRD_MSG_TYPE_OCC_ERROR,	/* HBRT <-- OPAL */
 	OPAL_PRD_MSG_TYPE_OCC_RESET,	/* HBRT <-- OPAL */
 	OPAL_PRD_MSG_TYPE_OCC_RESET_NOTIFY, /* HBRT --> OPAL */
-<<<<<<< HEAD
-=======
 	OPAL_PRD_MSG_TYPE_FIRMWARE_REQUEST, /* HBRT --> OPAL */
 	OPAL_PRD_MSG_TYPE_FIRMWARE_RESPONSE, /* HBRT <-- OPAL */
 	OPAL_PRD_MSG_TYPE_FIRMWARE_NOTIFY, /* HBRT <-- OPAL */
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 };
 
 struct opal_prd_msg_header {

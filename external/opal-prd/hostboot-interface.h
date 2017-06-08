@@ -60,8 +60,6 @@ enum MemoryError_t
  */
 #define HBRT_CAPS_OPAL_HAS_XSCOM_RC   (1ul << 0)
 
-<<<<<<< HEAD
-=======
 /**
  *  Load types for the load_pm_complex() interface
  *      HBRT_PM_LOAD: initial load of all lids/sections from scratch,
@@ -72,7 +70,6 @@ enum MemoryError_t
 #define HBRT_PM_LOAD    0
 #define HBRT_PM_RELOAD  1
 
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 struct host_interfaces {
 	/** Interface version. */
 	uint64_t interface_version;
@@ -318,10 +315,6 @@ struct host_interfaces {
 	 */
 	uint64_t (*get_interface_capabilities)(uint64_t i_set);
 
-<<<<<<< HEAD
-	/* Reserve some space for future growth. */
-	void (*reserved[31])(void);
-=======
 	/**
 	 *  @brief Map a physical address space into usable memory
 	 *  @note Repeated calls to map the same memory should not return an
@@ -393,7 +386,6 @@ struct host_interfaces {
 
 	/* Reserve some space for future growth. */
 	void (*reserved[27])(void);
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 };
 
 struct runtime_interfaces {

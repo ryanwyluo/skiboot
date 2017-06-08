@@ -951,11 +951,7 @@ static int64_t npu_err_inject(struct phb *phb, uint64_t pe_number,
 	struct npu_dev *dev = NULL;
 	int i;
 
-<<<<<<< HEAD
-	if (pe_num >= NPU_NUM_OF_PES) {
-=======
 	if (pe_number >= NPU_NUM_OF_PES) {
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 		prlog(PR_ERR, "NPU: error injection failed, bad PE given\n");
 		return OPAL_PARAMETER;
 	}
@@ -1460,16 +1456,11 @@ static void npu_create_devices(struct dt_node *dn, struct npu *p)
 {
 	struct npu_dev *dev;
 	struct dt_node *npu_dn, *link;
-<<<<<<< HEAD
-	uint32_t npu_phandle, index = 0;
-=======
 	uint32_t bdfn, npu_phandle, index = 0;
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	uint64_t buid_reg;
 	uint64_t lsisrcid;
 	uint64_t buid;
 
-<<<<<<< HEAD
 
 	/* The bits in the LSI ID Base register are always compared and
 	 * can be set to 0 in the buid base and mask fields.  The
@@ -1477,15 +1468,6 @@ static void npu_create_devices(struct dt_node *dn, struct npu *p)
 	lsisrcid = GETFIELD(NPU_LSI_SRC_ID_BASE, NPU_LSI_SRC_ID_BASE);
 	buid = p8_chip_irq_block_base(p->chip_id, P8_IRQ_BLOCK_MISC) >> 4;
 
-=======
-
-	/* The bits in the LSI ID Base register are always compared and
-	 * can be set to 0 in the buid base and mask fields.  The
-	 * buid (bus unit id) is the full irq minus the last 4 bits. */
-	lsisrcid = GETFIELD(NPU_LSI_SRC_ID_BASE, NPU_LSI_SRC_ID_BASE);
-	buid = p8_chip_irq_block_base(p->chip_id, P8_IRQ_BLOCK_MISC) >> 4;
-
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	buid_reg = SETFIELD(NP_IRQ_LEVELS, NP_BUID_ENABLE, ~0);
 	buid_reg = SETFIELD(NP_BUID_MASK, buid_reg, ~lsisrcid);
 	buid_reg = SETFIELD(NP_BUID_BASE, buid_reg, (buid & ~lsisrcid));
@@ -1607,12 +1589,7 @@ static void npu_add_phb_properties(struct npu *p)
 			      NPU_NUM_OF_PES);
 	dt_add_property_cells(np, "ibm,opal-reserved-pe",
 			      0);
-<<<<<<< HEAD
-        dt_add_property_cells(np, "ibm,opal-tce-kill",
-			      hi32(tkill), lo32(tkill));
-=======
         dt_add_property_u64(np, "ibm,opal-tce-kill", tkill);
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 
 	/* Memory window is exposed as 32-bits non-prefetchable
 	 * one because 64-bits prefetchable one is kind of special

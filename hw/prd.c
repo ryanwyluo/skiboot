@@ -177,13 +177,8 @@ static void send_next_pending_event(void)
 		prd_msg->hdr.type = OPAL_PRD_MSG_TYPE_OCC_ERROR;
 		prd_msg->occ_error.chip = proc;
 	} else if (event & EVENT_OCC_RESET) {
-<<<<<<< HEAD
-		prd_msg.hdr.type = OPAL_PRD_MSG_TYPE_OCC_RESET;
-		prd_msg.occ_reset.chip = proc;
-=======
 		prd_msg->hdr.type = OPAL_PRD_MSG_TYPE_OCC_RESET;
 		prd_msg->occ_reset.chip = proc;
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 		occ_msg_queue_occ_reset();
 	}
 
@@ -407,12 +402,9 @@ static int64_t opal_prd_msg(struct opal_prd_msg *msg)
 	case OPAL_PRD_MSG_TYPE_OCC_RESET_NOTIFY:
 		rc = occ_msg_queue_occ_reset();
 		break;
-<<<<<<< HEAD
-=======
 	case OPAL_PRD_MSG_TYPE_FIRMWARE_REQUEST:
 		rc = prd_msg_handle_firmware_req(msg);
 		break;
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	default:
 		rc = OPAL_UNSUPPORTED;
 	}

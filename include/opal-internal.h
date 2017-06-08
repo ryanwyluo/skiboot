@@ -82,8 +82,6 @@ extern void opal_del_host_sync_notifier(bool (*notify)(void *data));
 struct OpalHMIEvent;
 extern int handle_hmi_exception(__be64 hmer, struct OpalHMIEvent *hmi_evt);
 extern int occ_msg_queue_occ_reset(void);
-<<<<<<< HEAD
-=======
 
 extern unsigned long top_of_ram;
 
@@ -106,6 +104,5 @@ static inline bool opal_addr_valid(const void *addr)
 		return false;
 	return true;
 }
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 
 #endif /* __OPAL_INTERNAL_H */

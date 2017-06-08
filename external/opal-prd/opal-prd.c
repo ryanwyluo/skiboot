@@ -705,8 +705,6 @@ uint64_t hservice_get_interface_capabilities(uint64_t set)
 	return 0;
 }
 
-<<<<<<< HEAD
-=======
 uint64_t hservice_firmware_request(uint64_t req_len, void *req,
 		uint64_t *resp_lenp, void *resp)
 {
@@ -803,7 +801,6 @@ uint64_t hservice_firmware_request(uint64_t req_len, void *req,
 	}
 }
 
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 int hservices_init(struct opal_prd_ctx *ctx, void *code)
 {
 	uint64_t *s, *d;
@@ -1651,7 +1648,6 @@ static void handle_prd_control_run_cmd(struct control_msg *send_msg,
 static void handle_prd_control(struct opal_prd_ctx *ctx, int fd)
 {
 	struct control_msg msg, *recv_msg, *send_msg;
-	struct opal_prd_msg omsg;
 	bool enabled = false;
 	int rc, size;
 
@@ -1704,16 +1700,7 @@ static void handle_prd_control(struct opal_prd_ctx *ctx, int fd)
 		handle_prd_control_occ_actuation(send_msg, enabled);
 		break;
 	case CONTROL_MSG_TEMP_OCC_RESET:
-<<<<<<< HEAD
-		omsg.hdr.type = OPAL_PRD_MSG_TYPE_OCC_RESET_NOTIFY;
-		omsg.hdr.size = htobe16(sizeof(omsg));
-		rc = write(ctx->fd, &omsg, sizeof(omsg));
-		if (rc != sizeof(omsg))
-			pr_log(LOG_WARNING, "FW: Failed to send OCC_RESET message: %m");
-		handle_prd_control_occ_reset(send_msg);
-=======
 		handle_prd_control_occ_reset(send_msg, recv_msg);
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 		break;
 	case CONTROL_MSG_TEMP_OCC_ERROR:
 		handle_prd_control_occ_error(send_msg, recv_msg);

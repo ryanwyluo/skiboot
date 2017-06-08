@@ -1431,10 +1431,7 @@ void slw_update_timer_expiry(uint64_t new_target)
 				 */
 				prerror("SLW: timer stuck, falling back to OPAL pollers. You will likely have slower I2C and may have experienced increased jitter.\n");
 				prlog(PR_DEBUG, "SLW: Stuck with odd generation !\n");
-<<<<<<< HEAD
-=======
 				_xscom_unlock();
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 				slw_has_timer = false;
 				slw_dump_timer_ffdc();
 				return;

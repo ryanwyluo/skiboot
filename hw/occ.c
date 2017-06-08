@@ -1108,11 +1108,7 @@ int occ_msg_queue_occ_reset(void)
 		goto out;
 	}
 	/*
-<<<<<<< HEAD
-	 * Set 'valid' byte of chip_occ_data to 0 since OCC
-=======
 	 * Set 'valid' byte of occ_pstate_table to 0 since OCC
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	 * may not clear this byte on a reset.
 	 * OCC will set the 'valid' byte to 1 when it becomes
 	 * active again.
@@ -1120,11 +1116,7 @@ int occ_msg_queue_occ_reset(void)
 	for_each_chip(chip) {
 		struct occ_pstate_table *occ_data;
 
-<<<<<<< HEAD
-		occ_data = chip_occ_data(chip);
-=======
 		occ_data = get_occ_pstate_table(chip);
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 		occ_data->valid = 0;
 		chip->throttle = 0;
 	}

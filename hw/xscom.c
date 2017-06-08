@@ -481,12 +481,9 @@ int _xscom_read(uint32_t partid, uint64_t pcb_addr, uint64_t *val, bool take_loc
 	uint32_t gcid;
 	int rc;
 
-<<<<<<< HEAD
-=======
 	if (!opal_addr_valid(val))
 		return OPAL_PARAMETER;
 
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 	/* Due to a bug in some versions of the PRD wrapper app, errors
 	 * might not be properly forwarded to PRD, in which case the data
 	 * set here will be used. Rather than a random value let's thus

@@ -2100,11 +2100,7 @@ static int64_t phb4_freset(struct pci_slot *slot)
 
 		/* CAPP FPGA requires 1s to flash before polling link */
 		return pci_slot_set_sm_timeout(slot, secs_to_tb(1));
-<<<<<<< HEAD
-	case PHB4_SLOT_PFRESET_DEASSERT_DELAY:
-=======
 	case PHB4_SLOT_FRESET_DEASSERT_DELAY:
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 		pci_slot_set_state(slot, PHB4_SLOT_LINK_START);
 		return slot->ops.poll_link(slot);
 	default:

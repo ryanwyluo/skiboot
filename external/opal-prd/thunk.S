@@ -194,12 +194,6 @@ hinterface:
 	CALLBACK_THUNK(hservice_ipmi_msg)
 	CALLBACK_THUNK(hservice_memory_error)
 	CALLBACK_THUNK(hservice_get_interface_capabilities)
-<<<<<<< HEAD
-.globl __hinterface_pad
-__hinterface_pad:
-	/* Reserved space for future growth */
-	.space 31*8,0
-=======
 	DISABLED_THUNK(hservice_map_phys_mem)
 	DISABLED_THUNK(hservice_unmap_phys_mem)
 	DISABLED_THUNK(hservice_hcode_scom_update)
@@ -208,7 +202,6 @@ __hinterface_pad:
 __hinterface_pad:
 	/* Reserved space for future growth */
 	.space 27*8,0
->>>>>>> b0809b89ecdf430c9f6e0272fb4cf0dc01a4989d
 .globl __hinterface_end
 __hinterface_end:
 	/* Eye catcher for debugging */
